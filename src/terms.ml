@@ -10,6 +10,17 @@ open Extra
 
 (** {6 Term and rewriting rules representation} *)
 
+type 'a memo_aux =
+  Unevaluated of 'a * (unit -> 'a) | Evaluated of 'a
+type 'a memo = 'a memo_aux ref
+
+let force p = match !p with
+  | Unevaluated (_,f) -> let x = f  () in p := Evaluated x; x
+  | Evaluated x -> x
+
+let forget p = match !p with
+  | Unevaluated(x,_) | Evaluated x -> x
+
 (** Representation of a term (or type). *)
 type term =
   | Vari of term Bindlib.var
@@ -32,6 +43,7 @@ type term =
   (** Pattern variable (used in the LHS of rewriting rules). *)
   | TEnv of term_env * term array
   (** Term environment (used in the RHS of rewriting rules). *)
+  | Lazy of term memo
 
 (** Representation of an higher-order term. *)
  and term_env =
@@ -158,6 +170,7 @@ let rec unfold : term -> term = fun t ->
   match t with
   | Meta({meta_value = {contents = Some(b)}}, ar)
   | TEnv(TE_Some(b), ar) -> unfold (Bindlib.msubst b ar)
+  | Lazy m -> force m
   | _                    -> t
 
 (** Note that the {!val:unfold} function should (almost always) be used before
@@ -308,6 +321,7 @@ let rec lift : term -> tbox = fun t ->
   | Meta(r,m)   -> _Meta r (Array.map lift m)
   | Patt(i,n,m) -> _Patt i n (Array.map lift m)
   | TEnv(te,m)  -> _TEnv (lift_term_env te) (Array.map lift m)
+  | Lazy _ -> assert false
 
 (** [cleanup t] builds a copy of the {!type:term} [t] where every instantiated
     metavariable has been removed (collapsed), and the name of bound variables
@@ -348,7 +362,14 @@ let add_args : term -> term list -> term = fun t args ->
     the behavious of the function is unspecified when [t] or [u] contain terms
     of the form {!const:Patt(i,s,e)} or {!const:TEnv(te,e)} (in the case where
     [te] is not of the form {!const:TE_Some(b)}). *)
-let eq : term -> term -> bool = fun a b -> a == b ||
+
+let rec (===) a b =
+  match (a,b) with
+  | Lazy(a), _ -> forget a === b
+  | _, Lazy b -> a === forget b
+  | _ -> a == b
+
+let eq : term -> term -> bool = fun a b -> a === b ||
   let exception Not_equal in
   let rec eq l =
     match l with
@@ -388,6 +409,7 @@ let rec iter_meta : (meta -> unit) -> term -> unit = fun f t ->
   | Abst(a,b)  -> iter_meta f a; iter_meta f (Bindlib.subst b Kind)
   | Appl(t,u)  -> iter_meta f t; iter_meta f u
   | Meta(v,ts) -> f v; iter_meta f !(v.meta_type); Array.iter (iter_meta f) ts
+  | Lazy _ -> assert false
 
 (** [occurs m t] tests whether the metavariable [m] occurs in the term [t]. As
     for {!val:eq}, the behaviour of this function is unspecified when [t] uses

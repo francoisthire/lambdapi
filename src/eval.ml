@@ -6,7 +6,7 @@ open Terms
 open Print
 
 (** Representation of a stack for the abstract machine used for evaluation. *)
-type stack = (bool * term) ref list
+type stack = term list
 
 (* NOTE the stack contain references so that the computation of arguments when
    matching reduction rules may be shared. *)
@@ -16,7 +16,7 @@ let to_term : term -> stack -> term = fun t args ->
   let rec to_term t args =
     match args with
     | []      -> t
-    | u::args -> to_term (Appl(t,snd !u)) args
+    | u::args -> to_term (Appl(t, u)) args
   in to_term t args
 
 (** Evaluation step counter. *)
@@ -28,6 +28,11 @@ let rec whnf : term -> term = fun t ->
   let (u, stk) = whnf_stk t [] in
   to_term u stk
 
+and mk_lazy u =
+  match u with
+  | Lazy _ -> u
+  | _ -> Lazy (ref (Unevaluated (u, fun () -> whnf u)))
+
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the
     sense of [whnf]. *)
@@ -35,9 +40,9 @@ and whnf_stk : term -> stack -> term * stack = fun t stk ->
   let st = (unfold t, stk) in
   match st with
   (* Push argument to the stack. *)
-  | (Appl(f,u), stk    ) -> whnf_stk f (ref (false, u) :: stk)
+  | (Appl(f,u), stk    ) -> whnf_stk f (mk_lazy u :: stk)
   (* Beta reduction. *)
-  | (Abst(_,f), u::stk ) -> incr steps; whnf_stk (Bindlib.subst f (snd !u)) stk
+  | (Abst(_,f), u::stk ) -> incr steps; whnf_stk (Bindlib.subst f u) stk
   (* Try to rewrite. *)
   | (Symb(s)  , stk    ) ->
       begin
@@ -80,42 +85,41 @@ and find_rule : sym -> stack -> (term * stack) option = fun s stk ->
     pattern variables (using the [ITag] node) are stored in [ar], at the index
     they denote. In case several different values are found for a same pattern
     variable, equality modulo is computed to check compatibility. *)
-and matching : term_env array -> term -> (bool * term) ref -> bool = fun ar p t ->
-  if !debug_matc then log "matc" "[%a] =~= [%a]" pp p pp (snd !t);
+and matching : term_env array -> term -> term -> bool = fun ar p t ->
+  if !debug_matc then log "matc" "[%a] =~= [%a]" pp p pp t;
   let res =
     (* First handle patterns that do not need the evaluated term. *)
     match p with
     | Patt(Some(i),_,[||]) when ar.(i) = TE_None ->
-        let b = Bindlib.raw_mbinder [||] [||] 0 mkfree (fun _ -> (snd !t)) in
+        let b = Bindlib.raw_mbinder [||] [||] 0 mkfree (fun _ -> t) in
         ar.(i) <- TE_Some(b); true
     | Patt(Some(i),_,e   ) when ar.(i) = TE_None ->
         let fn t = match t with Vari(x) -> x | _ -> assert false in
         let vars = Array.map fn e in
-        let b = Bindlib.bind_mvar vars (lift (snd !t)) in
+        let b = Bindlib.bind_mvar vars (lift t) in
         ar.(i) <- TE_Some(Bindlib.unbox b); Bindlib.is_closed b
     | Patt(None,_,[||]) -> true
     | Patt(None,_,e   ) ->
         let fn t = match t with Vari(x) -> x | _ -> assert false in
         let vars = Array.map fn e in
-        let b = Bindlib.bind_mvar vars (lift (snd !t)) in
+        let b = Bindlib.bind_mvar vars (lift t) in
         Bindlib.is_closed b
     | _                                 ->
     (* Other cases need the term to be evaluated. *)
-    if not (fst !t) then t := (true, whnf (snd !t));
-    match (p, snd !t) with
+    match (p, unfold t) with
     | (Patt(Some(i),_,e), t            ) -> (* ar.(i) <> TE_None *)
         let b = match ar.(i) with TE_Some(b) -> b | _ -> assert false in
         eq_modulo (Bindlib.msubst b e) t
     | (Abst(_,t1)       , Abst(_,t2)   ) ->
         let (_,t1,t2) = Bindlib.unbind2 t1 t2 in
-        matching ar t1 (ref (false, t2))
+        matching ar t1 t2
     | (Appl(t1,u1)      , Appl(t2,u2)  ) ->
-        matching ar t1 (ref (fst !t, t2)) && matching ar u1 (ref (false, u2))
+        matching ar t1 t2 && matching ar u1 (mk_lazy u2)
     | (Vari(x1)         , Vari(x2)     ) -> Bindlib.eq_vars x1 x2
     | (Symb(s1)         , Symb(s2)     ) -> s1 == s2
     | (_                , _            ) -> false
   in
-  if !debug_matc then log "matc" (r_or_g res "[%a] =~= [%a]") pp p pp (snd !t); res
+  if !debug_matc then log "matc" (r_or_g res "[%a] =~= [%a]") pp p pp t; res
 
 (** [eq_modulo a b] tests equality modulo rewriting between [a] and [b]. *)
 and eq_modulo : term -> term -> bool = fun a b ->
@@ -124,6 +128,7 @@ and eq_modulo : term -> term -> bool = fun a b ->
     match l with
     | []       -> ()
     | (a,b)::l ->
+     if a === b then () else
     match (whnf a, whnf b) with
     | (Patt(_,_,_), _          )
     | (_          , Patt(_,_,_))
@@ -172,6 +177,7 @@ let rec snf : term -> term = fun t ->
   | Meta(m,ts)  -> Meta(m, Array.map snf ts)
   | Patt(_,_,_) -> assert false
   | TEnv(_,_)   -> assert false
+  | Lazy _ -> assert false
 
 (** [hnf t] computes the head normal form of the term [t]. *)
 let rec hnf : term -> term = fun t ->
