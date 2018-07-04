@@ -173,6 +173,12 @@ let rec unfold : term -> term = fun t ->
   | Lazy m -> force m
   | _                    -> t
 
+let rec unfold' : term -> term = fun t ->
+  match t with
+  | Meta({meta_value = {contents = Some(b)}}, ar)
+  | TEnv(TE_Some(b), ar) -> unfold' (Bindlib.msubst b ar)
+  | _                    -> t
+
 (** Note that the {!val:unfold} function should (almost always) be used before
     matching over a value of type {!type:term}. *)
 
@@ -364,7 +370,7 @@ let add_args : term -> term list -> term = fun t args ->
     [te] is not of the form {!const:TE_Some(b)}). *)
 
 let rec (===) a b =
-  match (a,b) with
+  match (unfold' a, unfold' b) with
   | Lazy(a), _ -> forget a === b
   | _, Lazy b -> a === forget b
   | _ -> a == b
