@@ -170,7 +170,7 @@ let rec unfold : term -> term = fun t ->
   match t with
   | Meta({meta_value = {contents = Some(b)}}, ar)
   | TEnv(TE_Some(b), ar) -> unfold (Bindlib.msubst b ar)
-  | Lazy m -> force m
+  | Lazy m -> unfold (force m)
   | _                    -> t
 
 (** Note that the {!val:unfold} function should (almost always) be used before
