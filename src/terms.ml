@@ -173,6 +173,13 @@ let rec unfold : term -> term = fun t ->
   | Lazy m -> unfold (force m)
   | _                    -> t
 
+let rec unfold_forget : term -> term = fun t ->
+  match t with
+  | Meta({meta_value = {contents = Some(b)}}, ar)
+  | TEnv(TE_Some(b), ar) -> unfold_forget (Bindlib.msubst b ar)
+  | Lazy m -> unfold_forget (forget m)
+  | _                    -> t
+
 (** Note that the {!val:unfold} function should (almost always) be used before
     matching over a value of type {!type:term}. *)
 
@@ -308,7 +315,7 @@ let rec lift : term -> tbox = fun t ->
     | TE_Vari(x) -> Bindlib.box_var x
     | _          -> Bindlib.box te (* closed objects *)
   in
-  match unfold t with
+  match unfold_forget t with
   | Vari(x)     -> _Vari x
   | Type        -> _Type
   | Kind        -> _Kind
@@ -369,7 +376,7 @@ let eq : term -> term -> bool = fun a b -> a == b ||
     match l with
     | []       -> ()
     | (a,b)::l ->
-    match (unfold a, unfold b) with
+    match (unfold_forget a, unfold_forget b) with
     | (a          , b          ) when a == b -> eq l
     | (Vari(x1)   , Vari(x2)   ) when Bindlib.eq_vars x1 x2 -> eq l
     | (Type       , Type       )
@@ -392,7 +399,7 @@ let eq : term -> term -> bool = fun a b -> a == b ||
     [t]. As for {!val:eq},  the behaviour of this function is unspecified when
     [t] uses the {!const:Patt} or {!const:TEnv} constructor. *)
 let rec iter_meta : (meta -> unit) -> term -> unit = fun f t ->
-  match unfold t with
+  match unfold_forget t with
   | Patt(_,_,_)
   | TEnv(_,_)  -> assert false
   | Vari(_)
@@ -422,7 +429,7 @@ let get_metas : term -> meta list = fun t ->
 let distinct_vars : term array -> bool = fun ar ->
   let rec distinct_vars vars i =
     if i < 0 then true else
-    match unfold ar.(i) with
+    match unfold_forget ar.(i) with
     | Vari(x) when List.exists (Bindlib.eq_vars x) vars -> false
     | Vari(x) -> distinct_vars (x::vars) (i-1)
     | _       -> false
