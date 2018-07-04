@@ -27,7 +27,7 @@ let rec whnf : term -> term = fun t ->
   if !debug_eval then log "eval" "evaluating [%a]" pp (unfold t);
   let s = !steps in
   let t = unfold t in
-  let (u, stk) = whnf_stk t [] in
+  let (u, stk) = whnf_stk_aux t [] in
   if !steps <> s then to_term u stk else t
 
 and mk_lazy u =
@@ -42,7 +42,10 @@ and mk_lazy u =
     argument list (or stack) [stk]. Note that the normalisation is done in the
     sense of [whnf]. *)
 and whnf_stk : term -> stack -> term * stack = fun t stk ->
-  let st = (unfold t, stk) in
+  whnf_stk_aux (unfold t) stk
+
+and whnf_stk_aux : term -> stack -> term * stack = fun t stk ->
+  let st = (t, stk) in
   match st with
   (* Push argument to the stack. *)
   | (Appl(f,u), stk    ) -> whnf_stk f (mk_lazy u :: stk)
@@ -153,12 +156,6 @@ and eq_modulo : term -> term -> bool = fun a b ->
   in
   let res = try eq_modulo [(a,b)]; true with Exit -> false in
   if !debug_equa then log "equa" (r_or_g res "%a == %a") pp a pp b; res
-
-let whnf : term -> term = fun t ->
-  let t = unfold t in
-  steps := 0;
-  let u = whnf t in
-  if !steps = 0 then t else u
 
 (** [snf t] computes the strong normal form of the term [t]. *)
 let rec snf : term -> term = fun t ->
