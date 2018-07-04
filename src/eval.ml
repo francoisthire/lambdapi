@@ -31,7 +31,10 @@ let rec whnf : term -> term = fun t ->
 and mk_lazy u =
   match u with
   | Lazy _ -> u
-  | _ -> Lazy (ref (Unevaluated (u, fun () -> whnf u)))
+  | _ ->
+     let rec r = ref (Unevaluated (u, fn))
+     and fn () = let u = whnf u in r := Evaluated u; u in
+     Lazy r
 
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the
@@ -114,7 +117,7 @@ and matching : term_env array -> term -> term -> bool = fun ar p t ->
         let (_,t1,t2) = Bindlib.unbind2 t1 t2 in
         matching ar t1 t2
     | (Appl(t1,u1)      , Appl(t2,u2)  ) ->
-        matching ar t1 t2 && matching ar u1 (mk_lazy u2)
+        matching ar t1 t2 && matching ar u1 (whnf u2)
     | (Vari(x1)         , Vari(x2)     ) -> Bindlib.eq_vars x1 x2
     | (Symb(s1)         , Symb(s2)     ) -> s1 == s2
     | (_                , _            ) -> false
@@ -128,7 +131,7 @@ and eq_modulo : term -> term -> bool = fun a b ->
     match l with
     | []       -> ()
     | (a,b)::l ->
-     if a === b then () else
+       (*if a === b then () else*)
     match (whnf a, whnf b) with
     | (Patt(_,_,_), _          )
     | (_          , Patt(_,_,_))
