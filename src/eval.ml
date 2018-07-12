@@ -1,15 +1,21 @@
 (** Evaluation and conversion. *)
 
 open Extra
+open Timed
 open Console
 open Terms
 open Print
 
+(** Logging function for evaluation. *)
+let log_eval = new_logger 'r' "eval" "debugging information for evaluation"
+let log_eval = log_eval.logger
+
+(** Logging function for equality modulo rewriting. *)
+let log_eqmd = new_logger 'e' "eqmd" "debugging information for equality"
+let log_eqmd = log_eqmd.logger
+
 (** Representation of a stack for the abstract machine used for evaluation. *)
 type stack = term list
-
-(* NOTE the stack contain references so that the computation of arguments when
-   matching reduction rules may be shared. *)
 
 (** [to_term t stk] builds a term from an abstract machine state [(t,stk)]. *)
 let to_term : term -> stack -> term = fun t args ->
@@ -20,23 +26,24 @@ let to_term : term -> stack -> term = fun t args ->
   in to_term t args
 
 (** Evaluation step counter. *)
-let steps : int ref = ref 0
+let steps : int Pervasives.ref = Pervasives.ref 0
 
 (** [whnf t] computes a weak head normal form of the term [t]. *)
 let rec whnf : term -> term = fun t ->
-  if !debug_eval then log "eval" "evaluating [%a]" pp (unfold t);
-  let s = !steps in
+  if !log_enabled then log_eval "evaluating [%a]" pp t;
+  let s = Pervasives.(!steps) in
   let t = unfold t in
   let (u, stk) = whnf_stk_aux t [] in
-  if !steps <> s then to_term u stk else t
+  if Pervasives.(!steps) <> s then to_term u stk else t
 
 and mk_lazy u =
   match u with
   | Lazy _ -> u
   | _ ->
-     let rec r = ref (Unevaluated (u, fn))
-     and fn () = let u = whnf u in r := Evaluated u; u in
-     Lazy r
+      let open Pervasives in
+      let rec r = ref (Unevaluated (u, fn))
+      and fn () = let u = whnf u in r := Evaluated u; u in
+      Lazy r
 
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the
@@ -50,16 +57,16 @@ and whnf_stk_aux : term -> stack -> term * stack = fun t stk ->
   (* Push argument to the stack. *)
   | (Appl(f,u), stk    ) -> whnf_stk f (mk_lazy u :: stk)
   (* Beta reduction. *)
-  | (Abst(_,f), u::stk ) -> incr steps; whnf_stk (Bindlib.subst f u) stk
+  | (Abst(_,f), u::stk ) -> Pervasives.incr steps; whnf_stk (Bindlib.subst f u) stk
   (* Try to rewrite. *)
   | (Symb(s)  , stk    ) ->
       begin
-        match !(s.sym_def) with
-        | Some(t) -> incr steps; whnf_stk t stk
+        match Timed.(!(s.sym_def)) with
+        | Some(t) -> Pervasives.incr steps; whnf_stk t stk
         | None    ->
         match find_rule s stk with
         | None        -> st
-        | Some(t,stk) -> incr steps; whnf_stk t stk
+        | Some(t,stk) -> Pervasives.incr steps; whnf_stk t stk
       end
   (* In head normal form. *)
   | (_        , _      ) -> st
@@ -79,7 +86,7 @@ and find_rule : sym -> stack -> (term * stack) option = fun s stk ->
       match (ps, ts) with
       | ([]   , _    ) ->
          begin
-           if !debug_eval then log "eval" "%a" pp_rule (s,r);
+           if !log_enabled then log_eval "%a" pp_rule (s,r);
            Some(Bindlib.msubst r.rhs env, ts)
          end
       | (p::ps, t::ts) -> if matching env p t then match_args ps ts else None
@@ -87,14 +94,14 @@ and find_rule : sym -> stack -> (term * stack) option = fun s stk ->
     in
     match_args r.lhs stk
   in
-  List.map_find match_rule !(s.sym_rules)
+  List.map_find match_rule Timed.(!(s.sym_rules))
 
 (** [matching ar p t] checks that term [t] matches pattern [p]. The values for
     pattern variables (using the [ITag] node) are stored in [ar], at the index
     they denote. In case several different values are found for a same pattern
     variable, equality modulo is computed to check compatibility. *)
 and matching : term_env array -> term -> term -> bool = fun ar p t ->
-  if !debug_matc then log "matc" "[%a] =~= [%a]" pp p pp t;
+  if !log_enabled then log_eval "[%a] =~= [%a]" pp p pp t;
   let res =
     (* First handle patterns that do not need the evaluated term. *)
     match p with
@@ -127,16 +134,16 @@ and matching : term_env array -> term -> term -> bool = fun ar p t ->
     | (Symb(s1)         , Symb(s2)     ) -> s1 == s2
     | (_                , _            ) -> false
   in
-  if !debug_matc then log "matc" (r_or_g res "[%a] =~= [%a]") pp p pp t; res
+  if !log_enabled then log_eval (r_or_g res "[%a] =~= [%a]") pp p pp t; res
 
 (** [eq_modulo a b] tests equality modulo rewriting between [a] and [b]. *)
 and eq_modulo : term -> term -> bool = fun a b ->
-  if !debug_equa then log "eq_modulo" "[%a] [%a]" pp a pp b;
+  if !log_enabled then log_eqmd "[%a] == [%a]" pp a pp b;
   let rec eq_modulo l =
     match l with
     | []       -> ()
     | (a,b)::l ->
-     if a == b then eq_modulo l else
+    if a == b then eq_modulo l else
     match (whnf a, whnf b) with
     | (Patt(_,_,_), _          )
     | (_          , Patt(_,_,_))
@@ -155,7 +162,7 @@ and eq_modulo : term -> term -> bool = fun a b ->
     | (_          , _          ) -> raise Exit
   in
   let res = try eq_modulo [(a,b)]; true with Exit -> false in
-  if !debug_equa then log "equa" (r_or_g res "%a == %a") pp a pp b; res
+  if !log_enabled then log_eqmd (r_or_g res "%a == %a") pp a pp b; res
 
 (** [snf t] computes the strong normal form of the term [t]. *)
 let rec snf : term -> term = fun t ->

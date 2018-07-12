@@ -5,20 +5,24 @@
     functions are also provided for basic term manipulations. *)
 
 open Extra
+open Timed
 
 (****************************************************************************)
 
 (** {6 Term and rewriting rules representation} *)
 
-type 'a memo_aux =
-  Unevaluated of 'a * (unit -> 'a) | Evaluated of 'a
-type 'a memo = 'a memo_aux ref
+type 'a memo_aux = Unevaluated of 'a * (unit -> 'a) | Evaluated of 'a
+type 'a memo = 'a memo_aux Pervasives.ref
 
-let force p = match !p with
+let force p =
+  let open Pervasives in
+  match !p with
   | Unevaluated (_,f) -> let x = f  () in p := Evaluated x; x
   | Evaluated x -> x
 
-let forget p = match !p with
+let forget p =
+  let open Pervasives in
+  match !p with
   | Unevaluated(x,_) | Evaluated x -> x
 
 (** Representation of a term (or type). *)
@@ -168,14 +172,24 @@ type term =
     unfolding is required, the returned term is physically equal to [t]. *)
 let rec unfold : term -> term = fun t ->
   match t with
-  | Meta({meta_value = {contents = Some(b)}}, ar)
+  | Meta(m, ar) ->
+      begin
+        match !(m.meta_value) with
+        | None    -> t
+        | Some(b) -> unfold (Bindlib.msubst b ar)
+      end
   | TEnv(TE_Some(b), ar) -> unfold (Bindlib.msubst b ar)
   | Lazy m -> unfold (force m)
   | _                    -> t
 
 let rec unfold_forget : term -> term = fun t ->
   match t with
-  | Meta({meta_value = {contents = Some(b)}}, ar)
+  | Meta(m, ar) ->
+      begin
+        match !(m.meta_value) with
+        | None    -> t
+        | Some(b) -> unfold_forget (Bindlib.msubst b ar)
+      end
   | TEnv(TE_Some(b), ar) -> unfold_forget (Bindlib.msubst b ar)
   | Lazy m -> unfold_forget (forget m)
   | _                    -> t
@@ -188,8 +202,8 @@ let unset : meta -> bool = fun m -> !(m.meta_value) = None
 
 (** [get_key ()] returns a fresh metavariable key. *)
 let get_key : unit -> int =
-  let counter = ref (-1) in
-  (fun () -> incr counter; !counter)
+  let counter = Pervasives.ref (-1) in
+  (fun () -> Pervasives.(incr counter; !counter))
 
 (** [fresh_meta a n] returns a new metavariable of type [a] and arity [n]. *)
 let fresh_meta : ?name:string -> term -> int -> meta = fun ?name a n ->
@@ -421,9 +435,9 @@ let occurs : meta -> term -> bool = fun m t ->
 
 (** [get_metas t] returns the list of all the metavariables in [t]. *)
 let get_metas : term -> meta list = fun t ->
-  let l = ref [] in
-  iter_meta (fun m -> l := m :: !l) t;
-  List.sort_uniq (fun m1 m2 -> m1.meta_key - m2.meta_key) !l
+  let l = Pervasives.ref [] in
+  iter_meta (fun m -> Pervasives.(l := m :: !l)) t;
+  List.sort_uniq (fun m1 m2 -> m1.meta_key - m2.meta_key) Pervasives.(!l)
 
 (** [distinct_vars a] checks that [a] is made of distinct variables. *)
 let distinct_vars : term array -> bool = fun ar ->
