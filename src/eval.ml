@@ -17,14 +17,6 @@ let log_eqmd = log_eqmd.logger
 (** Representation of a stack for the abstract machine used for evaluation. *)
 type stack = term list
 
-(** [to_term t stk] builds a term from an abstract machine state [(t,stk)]. *)
-let to_term : term -> stack -> term = fun t args ->
-  let rec to_term t args =
-    match args with
-    | []      -> t
-    | u::args -> to_term (Appl(t, u)) args
-  in to_term t args
-
 (** Evaluation step counter. *)
 let steps : int Pervasives.ref = Pervasives.ref 0
 
@@ -34,7 +26,7 @@ let rec whnf : term -> term = fun t ->
   let s = Pervasives.(!steps) in
   let t = unfold t in
   let (u, stk) = whnf_stk_aux t [] in
-  if Pervasives.(!steps) <> s then to_term u stk else t
+  if Pervasives.(!steps) <> s then add_args u stk else t
 
 and mk_lazy u =
   match u with

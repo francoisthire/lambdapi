@@ -78,9 +78,9 @@ let unify : unif list -> unif list =
     match (h1, h2) with
     (* Metavariable with no arguments. *)
     | (Meta(_,_)  , _          ) when ts1 = [] ->
-        unify acc ((h1, Eval.to_term h2 ts2)::l)
+        unify acc ((h1, add_args h2 ts2)::l)
     | (_          , Meta(_,_)  ) when ts2 = [] ->
-        unify acc ((h2, Eval.to_term h1 ts1)::l)
+        unify acc ((h2, add_args h1 ts1)::l)
     (* Non-necessarily injective head. *)
     | (Vari(x)    , Vari(y)    ) when Bindlib.eq_vars x y ->
         begin
@@ -88,8 +88,8 @@ let unify : unif list -> unif list =
             let fn l t1 t2 = (!t1,!t2)::l in
             unify acc (List.fold_left2 fn l ts1 ts2)
           with Invalid_argument(_) ->
-            let t1 = Eval.to_term h1 ts1 in
-            let t2 = Eval.to_term h2 ts2 in
+            let t1 = add_args h1 ts1 in
+            let t2 = add_args h2 ts2 in
             fatal_no_pos "[%a] and [%a] are not convertible." pp t1 pp t2
         end
     | (Symb(s1)   , Symb(s2)   ) when s1 == s2 && Sign.is_const s1 ->
@@ -98,16 +98,16 @@ let unify : unif list -> unif list =
             let fn l t1 t2 = (!t1,!t2)::l in
             unify acc (List.fold_left2 fn l ts1 ts2)
           with Invalid_argument(_) ->
-            let t1 = Eval.to_term h1 ts1 in
-            let t2 = Eval.to_term h2 ts2 in
+            let t1 = add_args h1 ts1 in
+            let t2 = add_args h2 ts2 in
             fatal_no_pos "[%a] and [%a] are not convertible." pp t1 pp t2
         end
     | (Symb(s)    , _          ) when not (Sign.is_const s) ->
         if Eval.eq_modulo t1 t2 then unify acc l
-        else unify ((Eval.to_term h1 ts1, Eval.to_term h2 ts2)::acc) l
+        else unify ((add_args h1 ts1, add_args h2 ts2)::acc) l
     | (_          , Symb(s)    ) when not (Sign.is_const s) ->
         if Eval.eq_modulo t1 t2 then unify acc l
-        else unify ((Eval.to_term h1 ts1, Eval.to_term h2 ts2)::acc) l
+        else unify ((add_args h1 ts1, add_args h2 ts2)::acc) l
     (* Definitely not convertible. *)
     | (_          , _          ) ->
         fatal_no_pos "[%a] and [%a] are not convertible." pp t1 pp t2
@@ -174,8 +174,8 @@ and solve_aux t1 t2 p : unif list =
   let (h2, ts2) = Eval.whnf_stk t2 [] in
   if !log_enabled then
     begin
-      let t1 = Eval.to_term h1 ts1 in
-      let t2 = Eval.to_term h2 ts2 in
+      let t1 = add_args h1 ts1 in
+      let t2 = add_args h2 ts2 in
       log_solv "solve_aux [%a] [%a]" pp t1 pp t2;
     end;
   match h1, h2 with
