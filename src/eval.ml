@@ -38,12 +38,11 @@ let rec whnf : term -> term = fun t ->
 
 and mk_lazy u =
   match u with
-  | Lazy _ -> u
-  | _ ->
-      let open Pervasives in
-      let rec r = ref (Unevaluated (u, fn))
-      and fn () = let u = whnf u in r := Evaluated u; u in
-      Lazy r
+  | Lazy(_) -> u
+  | _       ->
+      let rec r = Pervasives.ref (Unevaluated (u, fn))
+      and fn () = let u = whnf u in Pervasives.(r := Evaluated u); u in
+      Lazy(r)
 
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the
@@ -186,7 +185,7 @@ let rec snf : term -> term = fun t ->
   | Meta(m,ts)  -> Meta(m, Array.map snf ts)
   | Patt(_,_,_) -> assert false
   | TEnv(_,_)   -> assert false
-  | Lazy _ -> assert false
+  | Lazy(_)     -> assert false
 
 (** [hnf t] computes the head normal form of the term [t]. *)
 let rec hnf : term -> term = fun t ->

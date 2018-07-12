@@ -21,6 +21,7 @@ let rec infer_aux : conv_f -> Ctxt.t -> term -> term = fun conv ctx t ->
   match unfold t with
   | Patt(_,_,_) -> assert false (* Forbidden case. *)
   | TEnv(_,_)   -> assert false (* Forbidden case. *)
+  | Lazy(_)     -> assert false (* Forbidden case. *)
   | Kind        -> assert false (* Forbidden case. *)
   | Type        ->
       (* -------------------
@@ -88,7 +89,6 @@ let rec infer_aux : conv_f -> Ctxt.t -> term -> term = fun conv ctx t ->
          ----------------------------
              ctx ⊢ Meta(m,e) ⇒ a      *)
       infer_aux conv ctx (term_of_meta m e)
-  | Lazy _ -> assert false
 
 (** [check_aux conv ctx t c] checks that the term [t] has type [c], in context
     [ctx]. In the process, the [conv] function is used as convertibility test.

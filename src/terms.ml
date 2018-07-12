@@ -11,19 +11,21 @@ open Timed
 
 (** {6 Term and rewriting rules representation} *)
 
-type 'a memo_aux = Unevaluated of 'a * (unit -> 'a) | Evaluated of 'a
+type 'a memo_aux =
+  | Unevaluated of 'a * (unit -> 'a)
+  | Evaluated   of 'a
+
 type 'a memo = 'a memo_aux Pervasives.ref
 
-let force p =
+let force : 'a memo -> 'a = fun m ->
   let open Pervasives in
-  match !p with
-  | Unevaluated (_,f) -> let x = f  () in p := Evaluated x; x
-  | Evaluated x -> x
+  match !m with
+  | Unevaluated(_,f) -> let v = f () in m := Evaluated(v); v
+  | Evaluated(v)     -> v
 
-let forget p =
-  let open Pervasives in
-  match !p with
-  | Unevaluated(x,_) | Evaluated x -> x
+let forget : 'a memo -> 'a = fun m ->
+  match Pervasives.(!m) with
+  | Unevaluated(v,_) | Evaluated(v) -> v
 
 (** Representation of a term (or type). *)
 type term =
@@ -48,6 +50,7 @@ type term =
   | TEnv of term_env * term array
   (** Term environment (used in the RHS of rewriting rules). *)
   | Lazy of term memo
+  (** Special constructor for lazy evaluation. *)
 
 (** Representation of an higher-order term. *)
  and term_env =
@@ -172,26 +175,26 @@ type term =
     unfolding is required, the returned term is physically equal to [t]. *)
 let rec unfold : term -> term = fun t ->
   match t with
-  | Meta(m, ar) ->
+  | Meta(m, ar)          ->
       begin
         match !(m.meta_value) with
         | None    -> t
         | Some(b) -> unfold (Bindlib.msubst b ar)
       end
   | TEnv(TE_Some(b), ar) -> unfold (Bindlib.msubst b ar)
-  | Lazy m -> unfold (force m)
+  | Lazy(m)              -> unfold (force m)
   | _                    -> t
 
 let rec unfold_forget : term -> term = fun t ->
   match t with
-  | Meta(m, ar) ->
+  | Meta(m, ar)          ->
       begin
         match !(m.meta_value) with
         | None    -> t
         | Some(b) -> unfold_forget (Bindlib.msubst b ar)
       end
   | TEnv(TE_Some(b), ar) -> unfold_forget (Bindlib.msubst b ar)
-  | Lazy m -> unfold_forget (forget m)
+  | Lazy(m)              -> unfold_forget (forget m)
   | _                    -> t
 
 (** Note that the {!val:unfold} function should (almost always) be used before
@@ -330,6 +333,7 @@ let rec lift : term -> tbox = fun t ->
     | _          -> Bindlib.box te (* closed objects *)
   in
   match unfold_forget t with
+  | Lazy(_)     -> assert false
   | Vari(x)     -> _Vari x
   | Type        -> _Type
   | Kind        -> _Kind
@@ -342,7 +346,6 @@ let rec lift : term -> tbox = fun t ->
   | Meta(r,m)   -> _Meta r (Array.map lift m)
   | Patt(i,n,m) -> _Patt i n (Array.map lift m)
   | TEnv(te,m)  -> _TEnv (lift_term_env te) (Array.map lift m)
-  | Lazy _ -> assert false
 
 (** [cleanup t] builds a copy of the {!type:term} [t] where every instantiated
     metavariable has been removed (collapsed), and the name of bound variables
@@ -415,7 +418,8 @@ let eq : term -> term -> bool = fun a b -> a == b ||
 let rec iter_meta : (meta -> unit) -> term -> unit = fun f t ->
   match unfold_forget t with
   | Patt(_,_,_)
-  | TEnv(_,_)  -> assert false
+  | TEnv(_,_)
+  | Lazy(_)    -> assert false
   | Vari(_)
   | Type
   | Kind
@@ -424,7 +428,6 @@ let rec iter_meta : (meta -> unit) -> term -> unit = fun f t ->
   | Abst(a,b)  -> iter_meta f a; iter_meta f (Bindlib.subst b Kind)
   | Appl(t,u)  -> iter_meta f t; iter_meta f u
   | Meta(v,ts) -> f v; iter_meta f !(v.meta_type); Array.iter (iter_meta f) ts
-  | Lazy _ -> assert false
 
 (** [occurs m t] tests whether the metavariable [m] occurs in the term [t]. As
     for {!val:eq}, the behaviour of this function is unspecified when [t] uses
