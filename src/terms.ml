@@ -385,7 +385,6 @@ let add_args : term -> term list -> term = fun t args ->
     the behavious of the function is unspecified when [t] or [u] contain terms
     of the form {!const:Patt(i,s,e)} or {!const:TEnv(te,e)} (in the case where
     [te] is not of the form {!const:TE_Some(b)}). *)
-
 let eq : term -> term -> bool = fun a b -> a == b ||
   let exception Not_equal in
   let rec eq l =
