@@ -32,8 +32,8 @@ and to_lazy : term -> term = fun t ->
   match t with
   | Lazy(_) -> t
   | _       ->
-      let rec f () = let t = whnf t in Pervasives.(r := Evaluated t); t 
-      and r = Pervasives.ref (Unevaluated(t,f)) in Lazy(r)
+      let rec f () = let v = whnf t in Pervasives.(r := Done(v)); v
+      and r = Pervasives.ref (ToDo(t,f)) in Lazy(r)
 
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the

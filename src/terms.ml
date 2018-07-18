@@ -11,22 +11,6 @@ open Timed
 
 (** {6 Term and rewriting rules representation} *)
 
-type 'a memo_aux =
-  | Unevaluated of 'a * (unit -> 'a)
-  | Evaluated   of 'a
-
-type 'a memo = 'a memo_aux Pervasives.ref
-
-let force : 'a memo -> 'a = fun m ->
-  let open Pervasives in
-  match !m with
-  | Unevaluated(_,f) -> let v = f () in m := Evaluated(v); v
-  | Evaluated(v)     -> v
-
-let forget : 'a memo -> 'a = fun m ->
-  match Pervasives.(!m) with
-  | Unevaluated(v,_) | Evaluated(v) -> v
-
 (** Representation of a term (or type). *)
 type term =
   | Vari of term Bindlib.var
@@ -49,7 +33,7 @@ type term =
   (** Pattern variable (used in the LHS of rewriting rules). *)
   | TEnv of term_env * term array
   (** Term environment (used in the RHS of rewriting rules). *)
-  | Lazy of term memo
+  | Lazy of memo Pervasives.ref
   (** Special constructor for lazy evaluation. *)
 
 (** Representation of an higher-order term. *)
@@ -164,6 +148,13 @@ type term =
     environment [ar] should only contain (distinct) free variables, as for the
     {!const:Patt(i,s,ar)} constructor. *)
 
+(** Contents of a lazy cell. *)
+and memo =
+  | ToDo of term * (unit -> term)
+  (** Original term, plus forcing operation. *)
+  | Done of term
+  (** Already forced term. *)
+
 (****************************************************************************)
 
 (** {6 Functions related to the handling of metavariables} *)
@@ -182,7 +173,11 @@ let rec unfold : term -> term = fun t ->
         | Some(b) -> unfold (Bindlib.msubst b ar)
       end
   | TEnv(TE_Some(b), ar) -> unfold (Bindlib.msubst b ar)
-  | Lazy(m)              -> unfold (forget m)
+  | Lazy(m)              ->
+      begin
+        match Pervasives.(!m) with
+        | ToDo(v,_) | Done(v) -> unfold v
+      end
   | _                    -> t
 
 (** [unfold_keep t] is similar to [unfold t],  but it preserves sharing of the
@@ -196,7 +191,13 @@ let rec unfold_keep : term -> term = fun t ->
         | Some(b) -> unfold_keep (Bindlib.msubst b ar)
       end
   | TEnv(TE_Some(b), ar) -> unfold_keep (Bindlib.msubst b ar)
-  | Lazy(m)              -> unfold_keep (force m)
+  | Lazy(m)              ->
+      let v =
+        match Pervasives.(!m) with
+        | ToDo(_,f) -> let v = f () in Pervasives.(m := Done(v)); v
+        | Done(v)   -> v
+      in
+      unfold_keep v
   | _                    -> t
 
 (** Note that the {!val:unfold} function should (almost always) be used before
