@@ -177,7 +177,7 @@ let sort_type (c:Ctxt.t) (t:term) : unit =
   match infer c t with
   | Some(a) ->
       begin
-        match unfold_forget a with
+        match unfold a with
         | Type
         | Kind -> ()
         | a    -> fatal_no_pos "[%a] has type [%a] (not a sort)." pp t pp a

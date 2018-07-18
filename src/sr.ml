@@ -21,7 +21,7 @@ let subst_from_constrs : (term * term) list -> tvar array * term array =
     | (a,b)::cs ->
        let (ha,argsa) = get_args a and (hb,argsb) = get_args b in
        let na = List.length argsa and nb = List.length argsb in
-        match (unfold_forget ha, unfold_forget hb) with
+        match (unfold ha, unfold hb) with
         | (Symb(sa), Symb(sb)) when sa == sb && na = nb && Sign.is_const sa ->
             let fn l t1 t2 = (t1,t2) :: l in
             build_sub acc (List.fold_left2 fn cs argsa argsb)

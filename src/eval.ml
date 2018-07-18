@@ -24,7 +24,7 @@ let steps : int Pervasives.ref = Pervasives.ref 0
 let rec whnf : term -> term = fun t ->
   if !log_enabled then log_eval "evaluating [%a]" pp t;
   let s = Pervasives.(!steps) in
-  let t = unfold t in
+  let t = unfold_keep t in
   let (u, stk) = whnf_stk_aux t [] in
   if Pervasives.(!steps) <> s then add_args u stk else t
 
@@ -40,7 +40,7 @@ and mk_lazy u =
     argument list (or stack) [stk]. Note that the normalisation is done in the
     sense of [whnf]. *)
 and whnf_stk : term -> stack -> term * stack = fun t stk ->
-  whnf_stk_aux (unfold t) stk
+  whnf_stk_aux (unfold_keep t) stk
 
 and whnf_stk_aux : term -> stack -> term * stack = fun t stk ->
   let st = (t, stk) in
@@ -112,7 +112,7 @@ and matching : term_env array -> term -> term -> bool = fun ar p t ->
         Bindlib.is_closed b
     | _                                 ->
     (* Other cases need the term to be evaluated. *)
-    match (p, unfold t) with
+    match (p, unfold_keep t) with
     | (Patt(Some(i),_,e), t            ) -> (* ar.(i) <> TE_None *)
         let b = match ar.(i) with TE_Some(b) -> b | _ -> assert false in
         eq_modulo (Bindlib.msubst b e) t

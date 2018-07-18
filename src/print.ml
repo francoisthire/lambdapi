@@ -35,7 +35,7 @@ let pp_term : term pp = fun oc t ->
       | TE_Vari(m) -> out oc "?%s" (Bindlib.name_of m)
       | _          -> assert false
     in
-    match (unfold_forget t, p) with
+    match (unfold t, p) with
     (* Atoms are printed inconditonally. *)
     | (Vari(x)    , _    ) -> pp_tvar oc x
     | (Type       , _    ) -> out oc "Type"
