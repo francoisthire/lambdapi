@@ -24,31 +24,30 @@ let steps : int Pervasives.ref = Pervasives.ref 0
 let rec whnf : term -> term = fun t ->
   if !log_enabled then log_eval "evaluating [%a]" pp t;
   let s = Pervasives.(!steps) in
-  let t = unfold_keep t in
-  let (u, stk) = whnf_stk_aux t [] in
-  if Pervasives.(!steps) <> s then add_args u stk else t
+  let (u, stk) = whnf_stk t [] in
+  if Pervasives.(!steps) <> s then add_args u stk else unfold_keep t
 
-and mk_lazy u =
-  match u with
-  | Lazy(_) -> u
+(** [to_lazy t] wraps the term [t] into a lazy constructor. *)
+and to_lazy : term -> term = fun t ->
+  match t with
+  | Lazy(_) -> t
   | _       ->
-      let rec r = Pervasives.ref (Unevaluated (u, fn))
-      and fn () = let u = whnf u in Pervasives.(r := Evaluated u); u in
-      Lazy(r)
+      let rec f () = let t = whnf t in Pervasives.(r := Evaluated t); t 
+      and r = Pervasives.ref (Unevaluated(t,f)) in Lazy(r)
 
 (** [whnf_stk t stk] computes the weak head normal form of  [t] applied to the
     argument list (or stack) [stk]. Note that the normalisation is done in the
     sense of [whnf]. *)
 and whnf_stk : term -> stack -> term * stack = fun t stk ->
-  whnf_stk_aux (unfold_keep t) stk
-
-and whnf_stk_aux : term -> stack -> term * stack = fun t stk ->
-  let st = (t, stk) in
+  let st = (unfold_keep t, stk) in
   match st with
   (* Push argument to the stack. *)
-  | (Appl(f,u), stk    ) -> whnf_stk f (mk_lazy u :: stk)
+  | (Appl(f,u), stk    ) ->
+      whnf_stk f (to_lazy u :: stk)
   (* Beta reduction. *)
-  | (Abst(_,f), u::stk ) -> Pervasives.incr steps; whnf_stk (Bindlib.subst f u) stk
+  | (Abst(_,f), u::stk ) ->
+      Pervasives.incr steps;
+      whnf_stk (Bindlib.subst f u) stk
   (* Try to rewrite. *)
   | (Symb(s)  , stk    ) ->
       begin
