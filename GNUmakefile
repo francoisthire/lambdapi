@@ -77,6 +77,32 @@ tests: lambdapi.native
 		&& ./lambdapi.native --verbose 0 $$file ; } ; \
 	done
 
+.PHONY: real_tests
+real_tests: lambdapi.native
+	@echo "## OK tests ##"
+	@rm -f $(OK_TESTFILES:.dk=.dko)
+	@for file in $(OK_TESTFILES) ; do \
+		./lambdapi.native --verbose 0 $$file 2> /dev/null \
+		&& echo -e "\033[0;32mOK\033[0m $$file"   \
+	  || { echo -e "\033[0;31mKO\033[0m $$file"   \
+		&& ./lambdapi.native --verbose 0 $$file ; exit 1 ; } ; \
+	done
+	@echo "## KO tests ##"
+	@rm -f $(KO_TESTFILES:.dk=.dko)
+	@for file in $(KO_TESTFILES) ; do \
+		./lambdapi.native --verbose 0 $$file 2> /dev/null \
+		&& { echo -e "\033[0;31mOK\033[0m $$file" ; exit 1 ; } \
+		|| echo -e "\033[0;32mKO\033[0m $$file" ; \
+	done
+	@echo "## Examples ##"
+	@rm -f $(TESTFILES:.dk=.dko)
+	@for file in $(TESTFILES) ; do \
+		./lambdapi.native --verbose 0 $$file 2> /dev/null \
+	  && echo -e "\033[0;32mOK\033[0m $$file"   \
+	  || { echo -e "\033[0;31mKO\033[0m $$file"   \
+		&& ./lambdapi.native --verbose 0 $$file ; exit 1 ; } ; \
+	done
+
 #### Library tests ###########################################################
 
 .PHONY: matita
@@ -137,7 +163,7 @@ distclean: clean
 	@cd libraries && ./zenon_modulo.sh clean
 	@find . -type f -name "*~" -exec rm {} \;
 	@find . -type f -name "*.dko" -exec rm {} \;
-	@rm META
+	@rm -f META
 
 .PHONY: fullclean
 fullclean: distclean
@@ -155,14 +181,14 @@ fullclean: distclean
 # META generation.
 META: GNUmakefile
 	@echo "[GEN] $@ (version $(VERSION))"
-	@echo "name            = \"lambdapi\""                          > $@
-	@echo "version         = \"$(VERSION)\""                       >> $@
-	@echo "requires        = \"earley,earley.str,bindlib,timed\""  >> $@
-	@echo "description     = \"The Lambdapi prover as a library\"" >> $@
-	@echo "archive(byte)   = \"lambdapi.cma\""                     >> $@
-	@echo "plugin(byte)    = \"lambdapi.cma\""                     >> $@
-	@echo "archive(native) = \"lambdapi.cmxa\""                    >> $@
-	@echo "plugin(native)  = \"lambdapi.cmxs\""                    >> $@
+	@echo "name            = \"lambdapi\""                              > $@
+	@echo "version         = \"$(VERSION)\""                           >> $@
+	@echo "requires        = \"unix,earley,earley.str,bindlib,timed\"" >> $@
+	@echo "description     = \"The Lambdapi prover as a library\""     >> $@
+	@echo "archive(byte)   = \"lambdapi.cma\""                         >> $@
+	@echo "plugin(byte)    = \"lambdapi.cma\""                         >> $@
+	@echo "archive(native) = \"lambdapi.cmxa\""                        >> $@
+	@echo "plugin(native)  = \"lambdapi.cmxs\""                        >> $@
 
 # Uninstalling everything.
 .PHONY: uninstall
