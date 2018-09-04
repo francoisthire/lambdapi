@@ -148,6 +148,7 @@ let bind_match : term -> term -> (term, term) Bindlib.binder = fun t1 t2 ->
     (* Forbidden cases. *)
     | Patt(_,_,_) -> assert false
     | TEnv(_,_)   -> assert false
+    | Lazy(_)     -> assert false
   in
   Bindlib.unbox (Bindlib.bind_var x (lift_subst t2))
 
