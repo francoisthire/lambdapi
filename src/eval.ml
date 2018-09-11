@@ -178,6 +178,8 @@ let rec snf : term -> term = fun t ->
   | Patt(_,_,_) -> assert false
   | TEnv(_,_)   -> assert false
   | Lazy(_)     -> assert false
+  | Wild        -> assert false
+  | TRef(_)     -> assert false
 
 (** [hnf t] computes the head normal form of the term [t]. *)
 let rec hnf : term -> term = fun t ->

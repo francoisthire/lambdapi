@@ -9,29 +9,30 @@ open Print
 let log_subj = new_logger 'j' "subj" "debugging information for SR"
 let log_subj = log_subj.logger
 
+(** Representation of a substitution. *)
+type subst = tvar array * term array
 
 (** [subst_from_constrs cs] builds a //typing substitution// from the list  of
     constraints [cs]. The returned substitution is given by a couple of arrays
     [(xs,ts)] of the same length.  The array [xs] contains the variables to be
     substituted using the terms of [ts] at the same index. *)
-let subst_from_constrs : (term * term) list -> tvar array * term array =
+let subst_from_constrs : (term * term) list -> subst = fun cs ->
   let rec build_sub acc cs =
     match cs with
-    | []        -> acc
+    | []        -> List.split acc
     | (a,b)::cs ->
-       let (ha,argsa) = get_args a and (hb,argsb) = get_args b in
-       let na = List.length argsa and nb = List.length argsb in
+        let (ha,argsa) = get_args a and (hb,argsb) = get_args b in
+        let na = List.length argsa and nb = List.length argsb in
         match (unfold ha, unfold hb) with
         | (Symb(sa), Symb(sb)) when sa == sb && na = nb && Sign.is_const sa ->
             let fn l t1 t2 = (t1,t2) :: l in
             build_sub acc (List.fold_left2 fn cs argsa argsb)
-        | (Vari(x),_) when argsa = [] -> build_sub ((x,b)::acc) cs
-        | (_,Vari(x)) when argsb = [] -> build_sub ((x,a)::acc) cs
-        | (_,_) -> build_sub acc cs
+        | (Vari(x) , _       ) when argsa = [] -> build_sub ((x,b)::acc) cs
+        | (_       , Vari(x) ) when argsb = [] -> build_sub ((x,a)::acc) cs
+        | (_       , _       )                 -> build_sub acc cs
   in
-  fun cs ->
-    let (vs,ts) = List.split (build_sub [] cs) in
-    (Array.of_list vs, Array.of_list ts)
+  let (vs,ts) = build_sub [] cs in
+  (Array.of_list vs, Array.of_list ts)
 
 (* Does not work in examples/cic.dk
 
@@ -101,6 +102,8 @@ let check_rule : sym * rule -> unit = fun (s,rule) ->
     | Meta(_,_)   -> assert false (* Cannot appear in LHS. *)
     | TEnv(_,_)   -> assert false (* Cannot appear in LHS. *)
     | Lazy(_)     -> assert false (* Cannot appear in LHS. *)
+    | Wild        -> assert false (* Cannot appear in LHS. *)
+    | TRef(_)     -> assert false (* Cannot appear in LHS. *)
   in
   let lhs = List.map (fun p -> Bindlib.unbox (to_m 0 p)) rule.lhs in
   let lhs = add_args (Symb(s)) lhs in
@@ -120,7 +123,7 @@ let check_rule : sym * rule -> unit = fun (s,rule) ->
   | Some(lhs_constrs, ty_lhs) ->
   if !log_enabled then
     begin
-      log_subj "[%a] : [%a]" pp lhs pp ty_lhs;
+      log_subj "LHS has type [%a]" pp ty_lhs;
       let fn (t,u) = log_subj "  if [%a] = [%a]" pp t pp u in
       List.iter fn lhs_constrs
     end;
@@ -130,5 +133,28 @@ let check_rule : sym * rule -> unit = fun (s,rule) ->
   let p = Bindlib.unbox (Bindlib.bind_mvar xs p) in
   let (rhs,ty_lhs) = Bindlib.msubst p ts in
   (* Check that the RHS has the same type as the LHS. *)
-  if not (Solve.check_with_constr lhs_constrs rhs ty_lhs) then
-    fatal_no_pos "Rule [%a] does not preserve typing." pp_rule (s,rule)
+  let to_solve = Typing.check Ctxt.empty rhs ty_lhs in
+  if !log_enabled && to_solve <> [] then
+    begin
+      log_subj "RHS has type [%a]" pp ty_lhs;
+      let fn (t,u) = log_subj "  if [%a] = [%a]" pp t pp u in
+      List.iter fn to_solve
+    end;
+  (* Solving the constraints. *)
+  match Solve.(solve false {no_problems with to_solve}) with
+  | Some(cs) ->
+      let is_constr c =
+        let eq_comm (t1,u1) (t2,u2) =
+          (eq t1 t2 && eq u1 u2) || (eq t1 u2 && eq t2 u1)
+        in
+        List.exists (eq_comm c) lhs_constrs
+      in
+      let cs = List.filter (fun c -> not (is_constr c)) cs in
+      if cs <> [] then
+        begin
+          let fn (t,u) = fatal_msg "Cannot solve [%a] ~ [%a]\n" pp t pp u in
+          List.iter fn cs;
+          fatal_no_pos "Unable to prove SR for rule [%a]." pp_rule (s,rule)
+        end
+  | _        ->
+      fatal_no_pos "Unable to prove SR for rule [%a]." pp_rule (s,rule)
