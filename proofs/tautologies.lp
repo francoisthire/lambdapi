@@ -11,7 +11,7 @@ set builtin "refl"  ≔ proofs.logic.refl
 theorem and_idempotent : ∀a, P (eq bool (bool_and a a) a)
 proof
   intro a
-  refine bool_ind (λa, eq bool (bool_and a a) a) ?CT[a] ?CF[a] a
+  refine bool_ind ?P ?CT[a] ?CF[a] a
   reflexivity
   reflexivity
 qed

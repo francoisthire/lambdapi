@@ -22,7 +22,7 @@ type problems =
 
 (** Empty problem. *)
 let no_problems : problems =
-  {to_solve  = []; unsolved = []; recompute = false}
+  {to_solve = []; unsolved = []; recompute = false}
 
 (** Boolean saying whether user metavariables can be set or not. *)
 let can_instantiate : bool ref = ref true
@@ -59,6 +59,11 @@ and solve_aux : term -> term -> problems -> conv_constrs = fun t1 t2 p ->
     let t2 = Eval.to_term h2 ts2 in
     if Eval.eq_modulo t1 t2 then solve p
     else solve {p with unsolved = (t1,t2) :: p.unsolved}
+  in
+  let restart () =
+    let t1 = Eval.to_term h1 ts1 in
+    let t2 = Eval.to_term h2 ts2 in
+    solve {p with to_solve = (t1,t2) :: p.to_solve}
   in
   let decompose () =
     let add_args =
@@ -104,6 +109,48 @@ and solve_aux : term -> term -> problems -> conv_constrs = fun t1 t2 p ->
       solve {p with recompute = true}
   | (_          , Meta(m,ts) ) when ts2 = [] && instantiate m ts t1 ->
       solve {p with recompute = true}
+
+  | (Meta(m,ts) , _          ) when ts1 <> [] && distinct_vars ts ->
+      (* The metavariable must be a λ-abstraction. *)
+      begin
+        match Eval.whnf !(m.meta_type) with
+        | Prod(a,_) as mty ->
+            let x =
+              match unfold Pervasives.(snd !(List.hd ts1)) with
+              | Vari(x) -> x
+              | _       -> Bindlib.new_var mkfree "x"
+            in
+            let new_m = fresh_meta mty (m.meta_arity + 1) in
+            let new_m =
+              let ts = Array.append ts [|Vari(x)|] in
+              _Meta new_m (Array.map lift ts)
+            in
+            let t = _Abst (lift a) (Bindlib.bind_var x new_m) in
+            if instantiate m ts (Bindlib.unbox t) then restart ()
+            else add_to_unsolved ()
+        | _                -> add_to_unsolved ()
+      end
+
+  | (_          , Meta(m,ts) ) when ts2 <> [] && distinct_vars ts ->
+      (* The metavariable must be a λ-abstraction. *)
+      begin
+        match Eval.whnf !(m.meta_type) with
+        | Prod(a,_) as mty ->
+            let x =
+              match unfold Pervasives.(snd !(List.hd ts2)) with
+              | Vari(x) -> x
+              | _       -> Bindlib.new_var mkfree "x"
+            in
+            let new_m = fresh_meta mty (m.meta_arity + 1) in
+            let new_m =
+              let ts = Array.append ts [|Vari(x)|] in
+              _Meta new_m (Array.map lift ts)
+            in
+            let t = _Abst (lift a) (Bindlib.bind_var x new_m) in
+            if instantiate m ts (Bindlib.unbox t) then restart ()
+            else add_to_unsolved ()
+        | _                -> add_to_unsolved ()
+      end
 
   | (Meta(_,_)  , _          )
   | (_          , Meta(_,_)  ) -> add_to_unsolved ()

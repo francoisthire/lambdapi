@@ -16,21 +16,22 @@ theorem eq_sym : ∀a x y, P (eq a x y) ⇒ P (eq a y x)
 proof
   intro a x y h
   rewrite h
-  refine refl a y
+  reflexivity
 qed
 
 // Symmetry of the equality (second option, by hand).
 theorem eq_sym_other_1 : ∀a x y, P (eq a x y) ⇒ P (eq a y x)
 proof
   intro a x y h
-  refine eqind a x y h (λz, eq a y z) (refl a y)
+  refine eqind _ x y h (λz, eq _ y z) _
+  reflexivity
 qed
 
 // Symmetry of the equality (third option, by hand with a wildcard).
 theorem eq_sym_other_2 : ∀a x y, P (eq a x y) ⇒ P (eq a y x)
 proof
   intro a x y h
-  refine eqind a x y h (λz, eq a y z) _
+  refine eqind _ x y h (λz, eq _ y z) _
   simpl
   refine refl a y
 qed
@@ -39,14 +40,14 @@ qed
 theorem s_eq : ∀x y, P (eq nat x y) ⇒ P (eq nat (s x) (s y))
 proof
   intro x y xy
-  refine eqind nat x y xy (λz, eq nat (s z) (s y)) (refl nat (s y))
+  refine eqind _ x y xy (λz, eq nat (s z) (s y)) _
+  reflexivity
 qed
 
 // [z] is right neutral for add.
 theorem add0r : ∀n, P (eq nat (add n z) n)
 proof
-  // FIXME try to infer the predicate
-  refine nat_ind (λn, eq _ (add n z) n) ?CZ ?CS
+  refine nat_ind _ ?CZ ?CS
   // Case Z
   simpl
   refine refl nat z
@@ -60,7 +61,7 @@ qed
 theorem add_succ_r : ∀n m, P (eq nat (add n (s m)) (s (add n m)))
 proof
   intro n m
-  refine nat_ind (λn, eq nat (add n (s m)) (s (add n m))) ?CZ[n,m] ?CS[n,m] n
+  refine nat_ind ?P[m] ?CZ[n,m] ?CS[n,m] n
   // Case Z
   simpl
   refine refl nat (s m)
@@ -76,8 +77,7 @@ qed
 theorem addcomm : ∀n m, P (eq nat (add n m) (add m n))
 proof
   intro n m
-  // FIXME try to infer nat
-  refine nat_ind (λ n, eq nat (add n m) (add m n)) ?CZ[n,m] ?CS[n,m] n
+  refine nat_ind ?P[m] ?CZ[n,m] ?CS[n,m] n
   // Case Z
   simpl
   refine eq_sym _ (add m z) m (add0r m) // TODO add a symmetry tactic
@@ -92,8 +92,7 @@ qed
 theorem add_same_times_two : ∀x, P (eq nat (add x x) (mul 2 x))
 proof
   intro x
-  simpl
-  refine refl nat (add x x)
+  reflexivity
 qed
 
 //////////////////////////////////////////////////////////////////////////////
